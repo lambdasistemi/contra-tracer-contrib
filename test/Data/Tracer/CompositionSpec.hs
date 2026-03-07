@@ -17,12 +17,22 @@ import Control.Monad (forM_, replicateM_)
 import Control.Tracer (Tracer, traceWith)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
 import Data.List (isInfixOf)
-import Data.Time.Clock (UTCTime, addUTCTime)
+import Data.Time.Clock
+    ( UTCTime
+    , addUTCTime
+    , diffUTCTime
+    )
 import Data.Tracer.Intercept (intercept)
 import Data.Tracer.Internal (mkTracer)
 import Data.Tracer.ThreadSafe (newThreadSafeTracer)
-import Data.Tracer.Throttle (Throttled (..), throttleByFrequency)
-import Data.Tracer.Timestamp (Timestamped (..), timestampTracer)
+import Data.Tracer.Throttle
+    ( Throttled (..)
+    , throttleByFrequency
+    )
+import Data.Tracer.Timestamp
+    ( Timestamped (..)
+    , utcTimestampTracer
+    )
 import Test.Hspec (Spec, describe, it, shouldBe, shouldSatisfy)
 
 -- | Create a tracer that collects events in a list (thread-safe append)
@@ -38,32 +48,42 @@ baseTime = read "2024-01-01 00:00:00 UTC"
 addSeconds :: Double -> UTCTime -> UTCTime
 addSeconds s = addUTCTime (realToFrac s)
 
+-- | Diff function for UTCTime
+diffSecs :: UTCTime -> UTCTime -> Double
+diffSecs t1 t2 = realToFrac (diffUTCTime t2 t1)
+
 -- | Create a Timestamped with a specific time
-mkTimestamped :: UTCTime -> a -> Timestamped a
-mkTimestamped t a = Timestamped{timestampedTime = t, timestampedEvent = a}
+mkTimestamped :: UTCTime -> a -> Timestamped UTCTime a
+mkTimestamped t a =
+    Timestamped
+        { timestampedTime = t
+        , timestampedEvent = a
+        }
 
 -- | Match errors by checking for "error" in the string
 matchError :: String -> Maybe String
 matchError s = if "error" `isInfixOf` s then Just s else Nothing
 
 -- | Extract events that had drops
-extractDrops :: Throttled String -> Maybe (Throttled String)
+extractDrops
+    :: Throttled UTCTime String
+    -> Maybe (Throttled UTCTime String)
 extractDrops t@Throttled{throttledDropped}
     | throttledDropped > 0 = Just t
     | otherwise = Nothing
 
 -- | Check if a Timestamped event is valid (non-empty event)
-hasValidTimestamp :: Timestamped String -> Bool
+hasValidTimestamp :: Timestamped UTCTime String -> Bool
 hasValidTimestamp ts = not (null (timestampedEvent ts))
 
 spec :: Spec
 spec = describe "Tracer Compositions" $ do
-    describe "timestampTracer + ThreadSafe" $ do
+    describe "utcTimestampTracer + ThreadSafe" $ do
         it "adds timestamps correctly under concurrent access" $ do
             ref <- newIORef []
             let baseTracer = collectTracer ref
-            throttled <- throttleByFrequency [] baseTracer
-            let timestamped = timestampTracer throttled
+            throttled <- throttleByFrequency diffSecs [] baseTracer
+            let timestamped = utcTimestampTracer throttled
             safe <- newThreadSafeTracer timestamped
 
             forConcurrently_ [1 :: Int .. 50] $ \i ->
@@ -78,7 +98,8 @@ spec = describe "Tracer Compositions" $ do
         it "throttles correctly under concurrent access" $ do
             ref <- newIORef []
             let matcher _ = Just 1.0 -- 1 Hz
-            throttled <- throttleByFrequency [matcher] (collectTracer ref)
+            throttled <-
+                throttleByFrequency diffSecs [matcher] (collectTracer ref)
             safe <- newThreadSafeTracer throttled
 
             -- All events have same timestamp, so all after first should drop
@@ -93,7 +114,8 @@ spec = describe "Tracer Compositions" $ do
         it "maintains correct drop counts with sequential timestamps" $ do
             ref <- newIORef []
             let matcher _ = Just 1.0 -- 1 Hz = 1 second interval
-            throttled <- throttleByFrequency [matcher] (collectTracer ref)
+            throttled <-
+                throttleByFrequency diffSecs [matcher] (collectTracer ref)
             safe <- newThreadSafeTracer throttled
 
             -- Send events: 0s, 0.1s, 0.2s, ..., 1.0s, 1.1s, ..., 2.0s
@@ -157,7 +179,8 @@ spec = describe "Tracer Compositions" $ do
                 interceptedLog = intercept errorTracer extractDrops logTracer'
 
             -- Throttle at 10 Hz (0.1s interval)
-            throttled <- throttleByFrequency [\_ -> Just 10.0] interceptedLog
+            throttled <-
+                throttleByFrequency diffSecs [\_ -> Just 10.0] interceptedLog
             safe <- newThreadSafeTracer throttled
 
             -- Send 100 events with 0.05s spacing (faster than throttle)
@@ -185,7 +208,8 @@ spec = describe "Tracer Compositions" $ do
                 -- Intercept events with drops before they reach logTracer
                 interceptedLog = intercept errorTracer extractDrops logTracer'
 
-            throttled <- throttleByFrequency [\_ -> Just 100.0] interceptedLog
+            throttled <-
+                throttleByFrequency diffSecs [\_ -> Just 100.0] interceptedLog
             safe <- newThreadSafeTracer throttled
 
             -- Concurrent access with varying timestamps
