@@ -37,7 +37,8 @@ module Data.Tracer.Contrib
 
       -- * Timestamps
     , Timestamped (..)
-    , timestampTracer
+    , utcTimestampTracer
+    , monotonicTimestampTracer
 
       -- * Throttling
     , Throttled (..)
@@ -56,7 +57,11 @@ import Data.Tracer.Intercept (intercept)
 import Data.Tracer.LogFile (logFileTracer, logTracer)
 import Data.Tracer.ThreadSafe (newThreadSafeTracer)
 import Data.Tracer.Throttle (Throttled (..), throttleByFrequency)
-import Data.Tracer.Timestamp (Timestamped (..), timestampTracer)
+import Data.Tracer.Timestamp
+    ( Timestamped (..)
+    , monotonicTimestampTracer
+    , utcTimestampTracer
+    )
 import Data.Tracer.TraceWith
     ( contra
     , trace

@@ -7,8 +7,13 @@ Description : Frequency-based event throttling
 Copyright   : (c) Paolo Veronelli, 2025
 License     : Apache-2.0
 
-Provides a tracer that throttles events based on frequency limits.
-Uses event timestamps for deterministic, testable behavior.
+Provides a tracer that throttles events based on frequency
+limits. Uses event timestamps for deterministic, testable
+behavior.
+
+The throttle is parameterized on the time type @t@ — pass
+a diff function to compute elapsed seconds between two
+timestamps.
 -}
 module Data.Tracer.Throttle
     ( Throttled (..)
@@ -19,17 +24,17 @@ import Control.Tracer (Tracer, traceWith)
 import Data.IORef (modifyIORef', newIORef, readIORef)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
-import Data.Time.Clock (UTCTime, diffUTCTime)
 import Data.Tracer.Internal (mkTracer)
 import Data.Tracer.Timestamp (Timestamped (..))
 
 {- | Result of throttling an event.
 
-When an event passes through the throttle, it includes a count of
-how many events were dropped since the last emission.
+When an event passes through the throttle, it includes
+a count of how many events were dropped since the last
+emission.
 -}
-data Throttled a = Throttled
-    { throttledEvent :: Timestamped a
+data Throttled t a = Throttled
+    { throttledEvent :: Timestamped t a
     -- ^ the event that passed through
     , throttledDropped :: Int
     -- ^ number of events dropped since last emission
@@ -37,52 +42,65 @@ data Throttled a = Throttled
     deriving (Show, Eq)
 
 -- | State for a single throttle category.
-data ThrottleState = ThrottleState
-    { lastEmitTime :: UTCTime
+data ThrottleState t = ThrottleState
+    { lastEmitTime :: t
     -- ^ when we last emitted for this category
     , droppedCount :: Int
     -- ^ events dropped since last emission
     }
 
-{- | Create a tracer that throttles events based on frequency limits.
+{- | Create a tracer that throttles events based on
+frequency limits.
 
-Each matcher function defines a throttle category. When a matcher
-returns @Just frequency@, events matching that category are limited
-to that frequency (in Hz, i.e., events per second).
+The first argument computes elapsed seconds between two
+timestamps. For example:
 
-Events that don't match any category pass through immediately.
-The first event in each category always passes through.
-Subsequent events within the throttle interval are dropped.
-When an event finally passes, it reports how many were dropped.
+* UTC: @\\t1 t2 -> realToFrac (diffUTCTime t2 t1)@
+* Monotonic: @\\t1 t2 -> fromIntegral (t2 - t1) / 1e9@
+
+Each matcher function defines a throttle category. When a
+matcher returns @Just frequency@, events matching that
+category are limited to that frequency (in Hz).
+
+Events that don't match any category pass through
+immediately. The first event in each category always
+passes through. Subsequent events within the throttle
+interval are dropped. When an event finally passes, it
+reports how many were dropped.
 
 @
 let matchErrors msg
-        | "error" \`isInfixOf\` msg = Just 1.0  -- max 1 per second
+        | "error" \`isInfixOf\` msg = Just 1.0
         | otherwise = Nothing
-tracer <- throttleByFrequency [matchErrors] downstream
+    diffSeconds t1 t2 =
+        realToFrac (diffUTCTime t2 t1)
+tracer <- throttleByFrequency diffSeconds [matchErrors] downstream
 @
 -}
 throttleByFrequency
-    :: [a -> Maybe Double]
-    -- ^ matchers returning frequency in Hz (events/second)
-    -> Tracer IO (Throttled a)
+    :: (t -> t -> Double)
+    -- ^ elapsed seconds between two timestamps
+    -> [a -> Maybe Double]
+    -- ^ matchers returning frequency in Hz
+    -> Tracer IO (Throttled t a)
     -- ^ downstream tracer
-    -> IO (Tracer IO (Timestamped a))
-throttleByFrequency matchers downstream = do
-    stateRef <- newIORef (Map.empty :: Map Int ThrottleState)
+    -> IO (Tracer IO (Timestamped t a))
+throttleByFrequency diffSeconds matchers downstream = do
+    stateRef <- newIORef (Map.empty :: Map Int (ThrottleState t))
     return $ mkTracer $ \event -> do
         let ts = timestampedTime event
         case findMatch matchers (timestampedEvent event) of
             Nothing ->
-                -- No matcher - pass through immediately
                 traceWith downstream $
-                    Throttled{throttledEvent = event, throttledDropped = 0}
+                    Throttled
+                        { throttledEvent = event
+                        , throttledDropped = 0
+                        }
             Just (categoryIdx, frequency) -> do
                 let interval = 1.0 / frequency
                 state <- readIORef stateRef
                 case Map.lookup categoryIdx state of
                     Nothing -> do
-                        -- First event in category - emit and record
                         modifyIORef' stateRef $
                             Map.insert
                                 categoryIdx
@@ -92,39 +110,54 @@ throttleByFrequency matchers downstream = do
                                     }
                         traceWith downstream $
                             Throttled
-                                { throttledEvent = event
+                                { throttledEvent =
+                                    event
                                 , throttledDropped = 0
                                 }
-                    Just ThrottleState{lastEmitTime, droppedCount} -> do
-                        let elapsed =
-                                realToFrac (diffUTCTime ts lastEmitTime)
-                                    :: Double
-                        if elapsed >= interval
-                            then do
-                                -- Interval passed - emit with drop count
-                                modifyIORef' stateRef $
-                                    Map.insert
-                                        categoryIdx
-                                        ThrottleState
-                                            { lastEmitTime = ts
-                                            , droppedCount = 0
+                    Just
+                        ThrottleState
+                            { lastEmitTime
+                            , droppedCount
+                            } -> do
+                            let elapsed =
+                                    diffSeconds
+                                        lastEmitTime
+                                        ts
+                            if elapsed >= interval
+                                then do
+                                    modifyIORef' stateRef $
+                                        Map.insert
+                                            categoryIdx
+                                            ThrottleState
+                                                { lastEmitTime =
+                                                    ts
+                                                , droppedCount =
+                                                    0
+                                                }
+                                    traceWith downstream $
+                                        Throttled
+                                            { throttledEvent =
+                                                event
+                                            , throttledDropped =
+                                                droppedCount
                                             }
-                                traceWith downstream $
-                                    Throttled
-                                        { throttledEvent = event
-                                        , throttledDropped = droppedCount
-                                        }
-                            else do
-                                -- Within interval - drop and count
-                                modifyIORef' stateRef $
-                                    Map.adjust
-                                        ( \s ->
-                                            s{droppedCount = droppedCount + 1}
-                                        )
-                                        categoryIdx
+                                else
+                                    modifyIORef' stateRef $
+                                        Map.adjust
+                                            ( \s ->
+                                                s
+                                                    { droppedCount =
+                                                        droppedCount
+                                                            + 1
+                                                    }
+                                            )
+                                            categoryIdx
 
 -- | Find the first matching category and its frequency.
-findMatch :: [a -> Maybe Double] -> a -> Maybe (Int, Double)
+findMatch
+    :: [a -> Maybe Double]
+    -> a
+    -> Maybe (Int, Double)
 findMatch matchers event = go 0 matchers
   where
     go _ [] = Nothing
