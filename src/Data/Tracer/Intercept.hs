@@ -17,26 +17,26 @@ import Control.Tracer (Tracer, traceWith)
 import Data.Foldable (for_)
 import Data.Tracer.Internal (mkTracer)
 
-{- | Modify a 'Tracer' to emit to another 'Tracer' based on a partial mapping
+{- | Modify a 'Tracer' to emit to another 'Tracer' based on a mapping
 function.
 
 The intercepted tracer continues to emit all events to the primary tracer,
-but also forwards events to a secondary tracer when the mapping function
-returns 'Just'.
+but also forwards events to a secondary tracer for each element returned
+by the mapping function.
 
 @
 intercept secondary mapping primary
 @
 
-* @secondary@ - receives transformed events when mapping succeeds
-* @mapping@ - partial function to transform events
+* @secondary@ - receives transformed events
+* @mapping@ - function producing zero or more events to forward
 * @primary@ - receives all events unchanged
 -}
 intercept
     :: Tracer IO b
     -- ^ secondary tracer for intercepted events
-    -> (a -> Maybe b)
-    -- ^ partial mapping function
+    -> (a -> [b])
+    -- ^ mapping function (empty list = no interception)
     -> Tracer IO a
     -- ^ primary tracer
     -> Tracer IO a

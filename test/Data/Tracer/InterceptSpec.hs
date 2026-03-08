@@ -21,7 +21,7 @@ spec = do
                             modifyIORef' primaryRef (x :)
                         secondary = mkTracer $ \x ->
                             modifyIORef' secondaryRef (x :)
-                        intercepted = intercept secondary (const Nothing) primary
+                        intercepted = intercept secondary (const []) primary
                     mapM_ (traceWith intercepted) events
                     received <- readIORef primaryRef
                     return $ reverse received === events
@@ -35,7 +35,7 @@ spec = do
                             modifyIORef' primaryRef (x :)
                         secondary = mkTracer $ \x ->
                             modifyIORef' secondaryRef (x :)
-                        onlyEven x = if even x then Just x else Nothing
+                        onlyEven x = [x | even x]
                         intercepted = intercept secondary onlyEven primary
                     mapM_ (traceWith intercepted) events
                     received <- readIORef secondaryRef
@@ -51,7 +51,7 @@ spec = do
                         secondary = mkTracer $ \x ->
                             modifyIORef' secondaryRef (x :)
                         doubleIfPositive x =
-                            if x > 0 then Just (x * 2) else Nothing
+                            [x * 2 | x > 0]
                         intercepted =
                             intercept secondary doubleIfPositive primary
                     mapM_ (traceWith intercepted) events
@@ -65,7 +65,7 @@ spec = do
                     modifyIORef' ref ((x, "primary") :)
                 secondary = mkTracer $ \x ->
                     modifyIORef' ref ((x, "secondary") :)
-                intercepted = intercept secondary Just primary
+                intercepted = intercept secondary (\x -> [x]) primary
             traceWith intercepted "test"
             received <- readIORef ref
             received `shouldBe` [("test", "primary"), ("test", "secondary")]

@@ -61,16 +61,16 @@ mkTimestamped t a =
         }
 
 -- | Match errors by checking for "error" in the string
-matchError :: String -> Maybe String
-matchError s = if "error" `isInfixOf` s then Just s else Nothing
+matchError :: String -> [String]
+matchError s = [s | "error" `isInfixOf` s]
 
 -- | Extract events that had drops
 extractDrops
     :: Throttled UTCTime String
-    -> Maybe (Throttled UTCTime String)
+    -> [Throttled UTCTime String]
 extractDrops t@Throttled{throttledDropped}
-    | throttledDropped > 0 = Just t
-    | otherwise = Nothing
+    | throttledDropped > 0 = [t]
+    | otherwise = []
 
 -- | Check if a Timestamped event is valid (non-empty event)
 hasValidTimestamp :: Timestamped UTCTime String -> Bool
