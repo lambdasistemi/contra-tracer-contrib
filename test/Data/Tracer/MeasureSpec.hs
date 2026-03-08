@@ -7,8 +7,7 @@ import Data.IORef
     , writeIORef
     )
 import Data.Tracer.Internal (mkTracer)
-import Data.Tracer.Measure (measureDuration)
-import Data.Word (Word64)
+import Data.Tracer.Measure (Timing (..), measureDuration)
 import Test.Hspec
     ( Spec
     , describe
@@ -20,7 +19,7 @@ import Test.Hspec
 data Event
     = Start String
     | End String
-    | Duration String String Word64
+    | Duration String String Double
     | Other String
     deriving (Show, Eq)
 
@@ -32,7 +31,7 @@ selectEnd :: Event -> Maybe String
 selectEnd (End s) = Just s
 selectEnd _ = Nothing
 
-compose :: String -> String -> Word64 -> Event
+compose :: String -> String -> Double -> Event
 compose = Duration
 
 collector :: IO (Event -> IO (), IO [Event])
@@ -52,6 +51,7 @@ spec = do
                 let downstream = mkTracer push
                 tracer <-
                     measureDuration
+                        Monotonic
                         selectStart
                         selectEnd
                         compose
@@ -61,10 +61,10 @@ spec = do
                 events <- getEvents
                 length events `shouldBe` 1
                 case events of
-                    [Duration s e ns] -> do
+                    [Duration s e secs] -> do
                         s `shouldBe` "a"
                         e `shouldBe` "b"
-                        ns `shouldSatisfy` (>= 0)
+                        secs `shouldSatisfy` (>= 0)
                     _ ->
                         error "unexpected events"
 
@@ -73,6 +73,7 @@ spec = do
             let downstream = mkTracer push
             tracer <-
                 measureDuration
+                    Monotonic
                     selectStart
                     selectEnd
                     compose
@@ -90,6 +91,7 @@ spec = do
             let downstream = mkTracer push
             tracer <-
                 measureDuration
+                    Monotonic
                     selectStart
                     selectEnd
                     compose
@@ -103,6 +105,7 @@ spec = do
             let downstream = mkTracer push
             tracer <-
                 measureDuration
+                    Monotonic
                     selectStart
                     selectEnd
                     compose
@@ -112,8 +115,8 @@ spec = do
             traceWith tracer (End "y")
             events <- getEvents
             case events of
-                [Duration _ _ ns] ->
-                    ns `shouldSatisfy` (>= 0)
+                [Duration _ _ secs] ->
+                    secs `shouldSatisfy` (>= 0)
                 _ -> error "unexpected events"
 
         it "interleaves with other events" $ do
@@ -121,6 +124,7 @@ spec = do
             let downstream = mkTracer push
             tracer <-
                 measureDuration
+                    Monotonic
                     selectStart
                     selectEnd
                     compose
@@ -147,6 +151,7 @@ spec = do
             let downstream = mkTracer push
             tracer <-
                 measureDuration
+                    Monotonic
                     selectStart
                     selectEnd
                     compose
@@ -158,4 +163,24 @@ spec = do
             case events of
                 [Duration s _ _] ->
                     s `shouldBe` "second"
+                _ -> error "unexpected events"
+
+        it "works with WallClock timing" $ do
+            (push, getEvents) <- collector
+            let downstream = mkTracer push
+            tracer <-
+                measureDuration
+                    WallClock
+                    selectStart
+                    selectEnd
+                    compose
+                    downstream
+            traceWith tracer (Start "w")
+            traceWith tracer (End "c")
+            events <- getEvents
+            case events of
+                [Duration s e secs] -> do
+                    s `shouldBe` "w"
+                    e `shouldBe` "c"
+                    secs `shouldSatisfy` (>= 0)
                 _ -> error "unexpected events"
