@@ -49,6 +49,7 @@ library
     Data.Tracer.Intercept
     Data.Tracer.LogFile
     Data.Tracer.Measure
+    Data.Tracer.Share
     Data.Tracer.ThreadSafe
     Data.Tracer.Throttle
     Data.Tracer.Timestamp
@@ -78,6 +79,7 @@ test-suite unit-tests
     Data.Tracer.InterceptSpec
     Data.Tracer.LogFileSpec
     Data.Tracer.MeasureSpec
+    Data.Tracer.ShareSpec
     Data.Tracer.ThreadSafeSpec
     Data.Tracer.ThrottleSpec
     Data.Tracer.TimestampSpec
