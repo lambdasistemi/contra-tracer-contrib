@@ -45,6 +45,7 @@ library
   import:           warnings
   exposed-modules:
     Data.Tracer.Contrib
+    Data.Tracer.Fold
     Data.Tracer.Intercept
     Data.Tracer.LogFile
     Data.Tracer.Measure
@@ -58,6 +59,7 @@ library
     , base           >=4.14 && <5
     , containers     >=0.6  && <0.8
     , contra-tracer  >=0.1  && <0.3
+    , foldl          >=1.4  && <1.5
     , time           >=1.9  && <1.15
 
   hs-source-dirs:   src
@@ -72,6 +74,7 @@ test-suite unit-tests
   main-is:            main.hs
   other-modules:
     Data.Tracer.CompositionSpec
+    Data.Tracer.FoldSpec
     Data.Tracer.InterceptSpec
     Data.Tracer.LogFileSpec
     Data.Tracer.MeasureSpec
@@ -88,6 +91,7 @@ test-suite unit-tests
     , contra-tracer-contrib
     , directory
     , filepath
+    , foldl
     , hspec
     , QuickCheck
     , temporary
