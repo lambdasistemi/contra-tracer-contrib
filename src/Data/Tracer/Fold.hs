@@ -69,5 +69,5 @@ foldTracer (Fold step initial extract) downstream = do
         let !s' = step s a
         writeIORef ref s'
         -- Lazy extraction: only forced if downstream demands it
-        let ~b = extract s'
+        let b = extract s'
         traceWith downstream b
