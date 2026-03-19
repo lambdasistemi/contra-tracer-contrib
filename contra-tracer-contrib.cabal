@@ -46,9 +46,11 @@ library
   exposed-modules:
     Data.Tracer.Contrib
     Data.Tracer.Fold
+    Data.Tracer.Foldl.Extra
     Data.Tracer.Intercept
     Data.Tracer.LogFile
     Data.Tracer.Measure
+    Data.Tracer.Prometheus
     Data.Tracer.Share
     Data.Tracer.ThreadSafe
     Data.Tracer.Throttle
@@ -61,6 +63,7 @@ library
     , containers     >=0.6  && <0.8
     , contra-tracer  >=0.1  && <0.3
     , foldl          >=1.4  && <1.5
+    , text           >=1.2  && <2.2
     , time           >=1.9  && <1.15
 
   hs-source-dirs:   src
@@ -76,9 +79,11 @@ test-suite unit-tests
   other-modules:
     Data.Tracer.CompositionSpec
     Data.Tracer.FoldSpec
+    Data.Tracer.Foldl.ExtraSpec
     Data.Tracer.InterceptSpec
     Data.Tracer.LogFileSpec
     Data.Tracer.MeasureSpec
+    Data.Tracer.PrometheusSpec
     Data.Tracer.ShareSpec
     Data.Tracer.ThreadSafeSpec
     Data.Tracer.ThrottleSpec
@@ -97,6 +102,7 @@ test-suite unit-tests
     , hspec
     , QuickCheck
     , temporary
+    , text
     , time
 
   hs-source-dirs:     test
